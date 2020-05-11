@@ -27,6 +27,7 @@
 
 #include <string.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 /* USER CODE END Includes */
 
@@ -48,6 +49,8 @@
 TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_usart2_rx;
+DMA_HandleTypeDef hdma_usart2_tx;
 
 /* Definitions for initTask */
 osThreadId_t initTaskHandle;
@@ -63,10 +66,10 @@ const osThreadAttr_t uartRxThread_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
   .stack_size = 128 * 4
 };
-/* Definitions for uartTxThread */
-osThreadId_t uartTxThreadHandle;
-const osThreadAttr_t uartTxThread_attributes = {
-  .name = "uartTxThread",
+/* Definitions for servoCheckThrea */
+osThreadId_t servoCheckThreadHandle;
+const osThreadAttr_t servoCheckThread_attributes = {
+  .name = "servoCheckThread",
   .priority = (osPriority_t) osPriorityNormal,
   .stack_size = 128 * 4
 };
@@ -77,25 +80,37 @@ const osThreadAttr_t uartTxThread_attributes = {
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM3_Init(void);
 void StartInitTask(void *argument);
 void uart_rx_thread(void *argument);
-void uart_tx_thread(void *argument);
+void servo_check_thread(void *argument);
 
 /* USER CODE BEGIN PFP */
-void send_at_commands(char *command);
+
+void filter_message(char *cmd);
+void server_receive(char *cmd);
+void server_transmit(char *cmd);
 static void setPWM(TIM_HandleTypeDef, uint32_t, uint16_t, uint16_t);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+extern void initialise_monitor_handles(void);
+
 char tx_data[64];
 
-char rx_data[64];
+char rx_data[256];
 
-uint8_t rx_index = 0;
+char filter[100];
+
+char *token = "OK";
+char *hello = "Hello";
+
+bool connected = 0;
 
 
 /* USER CODE END 0 */
@@ -107,7 +122,7 @@ uint8_t rx_index = 0;
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+	initialise_monitor_handles();
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -128,23 +143,10 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
 
-
-  // Initial setup
-
-  /*send_at_commands("AT+RST\r\n");
-  send_at_commands("AT+CWQAP\r\n");
-  send_at_commands("AT+CWMODE=3\r\n");
-  send_at_commands("AT+CWJAP=\"IVAN\",\"ivanjuricic123\"\r\n");
-  send_at_commands("AT+CIPMUX=1\r\n");
-  send_at_commands("AT+CIPSERVER=1,5000\r\n");
-  send_at_commands("AT+CIPSTART=2,\"UDP\",\"192.168.1.2\",3000\r\n");
-  send_at_commands("AT+CIPSEND=2,5\r\n");
-  send_at_commands("hello");*/
-
-  //HAL_UART_Receive_IT(&huart2,(uint8_t*)rx_buff,64);
 
   /* USER CODE END 2 */
 
@@ -169,13 +171,10 @@ int main(void)
 
   /* Create the thread(s) */
   /* creation of initTask */
+
+
   initTaskHandle = osThreadNew(StartInitTask, NULL, &initTask_attributes);
 
-  /* creation of uartRxThread */
-  uartRxThreadHandle = osThreadNew(uart_rx_thread, NULL, &uartRxThread_attributes);
-
-  /* creation of uartTxThread */
-  uartTxThreadHandle = osThreadNew(uart_tx_thread, NULL, &uartTxThread_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -261,7 +260,7 @@ static void MX_TIM3_Init(void)
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 0;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 4095;
+  htim3.Init.Period = 0;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
@@ -323,6 +322,25 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 2 */
 
   /* USER CODE END USART2_Init 2 */
+
+}
+
+/** 
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void) 
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Stream5_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
+  /* DMA1_Stream6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
 
 }
 
@@ -481,17 +499,55 @@ uint16_t pulse)
 	HAL_TIM_PWM_Start(&timer, channel); // start pwm generation
 }
 
-void send_at_commands(char *command){
+void server_transmit(char *cmd){
 
-	memset(&rx_data,'\0',64);
 	memset(&tx_data,'\0',64);
+	memset(&rx_data,'\0',256);
 
-	strcpy(tx_data, command);
+	strcpy(tx_data, cmd);
 
-	HAL_UART_Transmit(&huart2,(uint8_t*)tx_data,strlen(command),HAL_MAX_DELAY);
-	//HAL_UART_Receive_IT()
+	HAL_UART_Transmit(&huart2,(uint8_t*)tx_data,64,HAL_MAX_DELAY);
+
+	HAL_UART_Receive_DMA(&huart2,(uint8_t*)rx_data,256);
+
+	HAL_Delay(2000);
+
+	filter_message(rx_data);
+}
+
+void server_receive(char *cmd){
+
+	HAL_UART_Receive_DMA(&huart2,(uint8_t*)rx_data,256);
+
+	HAL_Delay(2000);
+
+	filter_message(rx_data);
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
+
+	__NOP();
 
 }
+
+void filter_message(char *cmd){
+
+	memset(&filter,'\0',100);
+
+	int j = 0;
+
+	for(int i = 0;i < 256;i++){
+
+		if(cmd[i] != '\0'){
+
+			filter[j] = cmd[i];
+			j++;
+
+		}
+	}
+
+}
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartInitTask */
@@ -507,20 +563,59 @@ void StartInitTask(void *argument)
 
 	// Initialize all configured peripherals
 
+	MX_DMA_Init();
 	MX_USART2_UART_Init();
 
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 
-  /* Infinite loop */
-	for(;;)
-	{
-		HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
-		osDelay(200);
-		for(int i=0; i<256; i++){
-		 setPWM(htim3, TIM_CHANNEL_1, 255, i);
-		 osDelay(10);
+	// Initial ESP moudle setup
+
+
+	server_transmit("AT+RST\r\n");												// Reset module
+	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
+
+	server_transmit("AT+CWQAP\r\n");											// Disconnect from any AP
+	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
+
+	server_transmit("AT+CWMODE=3\r\n");										// Set dual working mode ( Client and server)
+	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
+
+	while(!connected){
+
+		server_transmit("AT+CWJAP=\"IVAN\",\"ivanjuricic123\"\r\n");			// Connect to local Wi-Fi hotspot
+		server_transmit("AT+CIPSTATUS=?\r\n");
+
+		if(strstr(filter, token) != NULL){
+			connected = 1;
+			HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_12);
 		}
+
 	}
+
+	server_transmit("AT+CIPMUX=1\r\n");										// Enable multiplexing
+	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
+
+	server_transmit("AT+CIPSERVER=1,5000\r\n");								// Create server listening on port 5000
+	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
+
+	server_transmit("AT+CIPSTART=2,\"UDP\",\"192.168.1.2\",3000\r\n");			// Set up UDP connection with server
+	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
+
+	server_transmit("AT+CIPSEND=2,30\r\n");										// Send connection confirmation
+	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
+
+	server_transmit("Your lock, reporting for duty!");
+	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
+
+	/* creation of uartRxThread */
+	uartRxThreadHandle = osThreadNew(uart_rx_thread, NULL, &uartRxThread_attributes);
+
+
+	/* creation of servoCheckThread */
+	servoCheckThreadHandle = osThreadNew(servo_check_thread, NULL, &servoCheckThread_attributes);
+
+	osThreadExit();
+
   /* USER CODE END 5 */ 
 }
 
@@ -535,48 +630,57 @@ void uart_rx_thread(void *argument)
 {
   /* USER CODE BEGIN uart_rx_thread */
 
-	  send_at_commands("AT+CWQAP\r\n");
-	  send_at_commands("AT+CWMODE=3\r\n");
-	  send_at_commands("AT+CWJAP=\"IVAN\",\"ivanjuricic123\"\r\n");
-	  send_at_commands("AT+CIPMUX=1\r\n");
-	  send_at_commands("AT+CIPSERVER=1,5000\r\n");
-	  send_at_commands("AT+CIPSTART=2,\"UDP\",\"192.168.1.2\",3000\r\n");
-	  send_at_commands("AT+CIPSEND=2,5\r\n");
-	  send_at_commands("hello");
+	  bool flag = 1;
 
 	  /* Infinite loop */
 	  for(;;)
 	  {
+		  server_receive(rx_data);
+		  if(flag){
+			  if(strstr(filter, hello) != NULL){
+				  server_transmit("AT+CIPSEND=2,23\r\n");
+				  server_transmit("Lock says: Listening...");
+				  flag = 0;
+			  	}
 
-		  HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_14);
+		  }else{
+
+			  HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
+
+		  }
+
 		  osDelay(100);
 
 	  }
   /* USER CODE END uart_rx_thread */
 }
 
-/* USER CODE BEGIN Header_uart_tx_thread */
+/* USER CODE BEGIN Header_servo_check_thread */
 /**
-* @brief Function implementing the uartTxThread thread.
+* @brief Function implementing the servoCheckThrea thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_uart_tx_thread */
-void uart_tx_thread(void *argument)
+/* USER CODE END Header_servo_check_thread */
+void servo_check_thread(void *argument)
 {
-  /* USER CODE BEGIN uart_tx_thread */
+  /* USER CODE BEGIN servo_check_thread */
   /* Infinite loop */
   for(;;)
   {
+	  /*for(int i=0;i<255;i++){
+		  setPWM(htim3,TIM_CHANNEL_1,255,i);
+		  osDelay(2000);
+	  }*/
 	  HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
-	  osDelay(175);
+	  osDelay(200);
   }
-  /* USER CODE END uart_tx_thread */
+  /* USER CODE END servo_check_thread */
 }
 
  /**
   * @brief  Period elapsed callback in non blocking mode
-  * @note   This function is called  when TIM1 interrupt took place, inside
+  * @note   This function is called  when TIM6 interrupt took place, inside
   * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
   * a global variable "uwTick" used as application time base.
   * @param  htim : TIM handle
@@ -587,7 +691,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   /* USER CODE BEGIN Callback 0 */
 
   /* USER CODE END Callback 0 */
-  if (htim->Instance == TIM1) {
+  if (htim->Instance == TIM6) {
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
