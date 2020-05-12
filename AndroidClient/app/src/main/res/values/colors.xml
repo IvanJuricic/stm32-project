@@ -3,4 +3,7 @@
     <color name="colorPrimary">#6200EE</color>
     <color name="colorPrimaryDark">#3700B3</color>
     <color name="colorAccent">#03DAC5</color>
+    <color name="locked">#FF987A</color>
+    <color name="unlocked">#B3FF8E</color>
+    <color name="checking">#F4FF7B</color>
 </resources>

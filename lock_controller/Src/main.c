@@ -631,7 +631,7 @@ void uart_rx_thread(void *argument)
   /* USER CODE BEGIN uart_rx_thread */
 
 	  bool flag = 1;
-
+	  bool send = 1;
 	  /* Infinite loop */
 	  for(;;)
 	  {
@@ -644,8 +644,21 @@ void uart_rx_thread(void *argument)
 			  	}
 
 		  }else{
+			  if(send){
 
-			  HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
+				  server_transmit("AT+CIPSEND=2,6\r\n");
+				  server_transmit("Locked");
+				  HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
+				  send = 0;
+
+			  }
+			  else{
+
+				  server_transmit("AT+CIPSEND=2,8\r\n");
+				  server_transmit("Unlocked");
+				  HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
+				  send = 1;
+			  }
 
 		  }
 
