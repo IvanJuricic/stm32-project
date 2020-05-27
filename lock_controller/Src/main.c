@@ -582,7 +582,7 @@ void StartInitTask(void *argument)
 
 	while(!connected){
 
-		server_transmit("AT+CWJAP=\"IVAN\",\"ivanjuricic123\"\r\n");			// Connect to local Wi-Fi hotspot
+		server_transmit("AT+CWJAP=\"Ivan\",\"ivanivan\"\r\n");			// Connect to local Wi-Fi hotspot
 		server_transmit("AT+CIPSTATUS=?\r\n");
 
 		if(strstr(filter, token) != NULL){
@@ -598,7 +598,7 @@ void StartInitTask(void *argument)
 	server_transmit("AT+CIPSERVER=1,5000\r\n");								// Create server listening on port 5000
 	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
 
-	server_transmit("AT+CIPSTART=2,\"UDP\",\"192.168.1.2\",3000\r\n");			// Set up UDP connection with server
+	server_transmit("AT+CIPSTART=2,\"UDP\",\"192.168.43.223\",3000\r\n");			// Set up UDP connection with server
 	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
 
 	server_transmit("AT+CIPSEND=2,30\r\n");										// Send connection confirmation
