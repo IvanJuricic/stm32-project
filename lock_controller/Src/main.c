@@ -69,7 +69,7 @@ const osThreadAttr_t uartRxThread_attributes = {
 /* Definitions for servoCheckThrea */
 osThreadId_t servoCheckThreadHandle;
 const osThreadAttr_t servoCheckThread_attributes = {
-  .name = "servoCheckThread",
+  .name = "servoCheckThrea",
   .priority = (osPriority_t) osPriorityNormal,
   .stack_size = 128 * 4
 };
@@ -92,14 +92,11 @@ void servo_check_thread(void *argument);
 void filter_message(char *cmd);
 void server_receive(char *cmd);
 void server_transmit(char *cmd);
-static void setPWM(TIM_HandleTypeDef, uint32_t, uint16_t, uint16_t);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-extern void initialise_monitor_handles(void);
 
 char tx_data[64];
 
@@ -109,9 +106,13 @@ char filter[100];
 
 char *token = "OK";
 char *hello = "Hello";
+char *lock = "Zakljucano";
+char *unlock = "Otkljucano";
 
 bool connected = 0;
+bool position = 0;
 
+GPIO_PinState manualLockToggle;
 
 /* USER CODE END 0 */
 
@@ -122,7 +123,7 @@ bool connected = 0;
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	initialise_monitor_handles();
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -143,7 +144,8 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-
+  MX_DMA_Init();
+  MX_USART2_UART_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
 
@@ -171,10 +173,13 @@ int main(void)
 
   /* Create the thread(s) */
   /* creation of initTask */
-
-
   initTaskHandle = osThreadNew(StartInitTask, NULL, &initTask_attributes);
 
+  /* creation of uartRxThread */
+  uartRxThreadHandle = osThreadNew(uart_rx_thread, NULL, &uartRxThread_attributes);
+
+  /* creation of servoCheckThrea */
+  servoCheckThreadHandle = osThreadNew(servo_check_thread, NULL, &servoCheckThread_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -251,6 +256,7 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 0 */
 
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
 
@@ -258,11 +264,20 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 0;
+  htim3.Init.Prescaler = 160;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 0;
+  htim3.Init.Period = 2000;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
   if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
   {
     Error_Handler();
@@ -274,14 +289,10 @@ static void MX_TIM3_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
+  sConfigOC.Pulse = 50;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
   }
@@ -484,21 +495,6 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-void setPWM(TIM_HandleTypeDef timer, uint32_t channel, uint16_t period,
-uint16_t pulse)
-{
-	HAL_TIM_PWM_Stop(&timer, channel); // stop generation of pwm
-	TIM_OC_InitTypeDef sConfigOC;
-	timer.Init.Period = period; // set the period duration
-	HAL_TIM_PWM_Init(&timer); // reinititialise with new period value
-	sConfigOC.OCMode = TIM_OCMODE_PWM1;
-	sConfigOC.Pulse = pulse; // set the pulse duration
-	sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-	sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-	HAL_TIM_PWM_ConfigChannel(&timer, &sConfigOC, channel);
-	HAL_TIM_PWM_Start(&timer, channel); // start pwm generation
-}
-
 void server_transmit(char *cmd){
 
 	memset(&tx_data,'\0',64);
@@ -510,7 +506,7 @@ void server_transmit(char *cmd){
 
 	HAL_UART_Receive_DMA(&huart2,(uint8_t*)rx_data,256);
 
-	HAL_Delay(2000);
+	HAL_Delay(1500);
 
 	filter_message(rx_data);
 }
@@ -548,6 +544,16 @@ void filter_message(char *cmd){
 
 }
 
+int map(int st1, int fn1, int st2, int fn2, int value)
+{
+    return (1.0*(value-st1))/((fn1-st1)*1.0) * (fn2-st2)+st2;
+}
+
+void servo_write(int angle)
+{
+	htim3.Instance->CCR1 = map(0,180,50,250,angle);
+}
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartInitTask */
@@ -565,7 +571,6 @@ void StartInitTask(void *argument)
 
 	MX_DMA_Init();
 	MX_USART2_UART_Init();
-
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 
 	// Initial ESP moudle setup
@@ -582,7 +587,7 @@ void StartInitTask(void *argument)
 
 	while(!connected){
 
-		server_transmit("AT+CWJAP=\"IVAN\",\"ivanjuricic123\"\r\n");			// Connect to local Wi-Fi hotspot
+		server_transmit("AT+CWJAP=\"Ivan\",\"ivanivan\"\r\n");			// Connect to local Wi-Fi hotspot
 		server_transmit("AT+CIPSTATUS=?\r\n");
 
 		if(strstr(filter, token) != NULL){
@@ -598,7 +603,7 @@ void StartInitTask(void *argument)
 	server_transmit("AT+CIPSERVER=1,5000\r\n");								// Create server listening on port 5000
 	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
 
-	server_transmit("AT+CIPSTART=2,\"UDP\",\"192.168.1.2\",3000\r\n");			// Set up UDP connection with server
+	server_transmit("AT+CIPSTART=2,\"UDP\",\"192.168.43.223\",3000\r\n");			// Set up UDP connection with server
 	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
 
 	server_transmit("AT+CIPSEND=2,30\r\n");										// Send connection confirmation
@@ -609,7 +614,6 @@ void StartInitTask(void *argument)
 
 	/* creation of uartRxThread */
 	uartRxThreadHandle = osThreadNew(uart_rx_thread, NULL, &uartRxThread_attributes);
-
 
 	/* creation of servoCheckThread */
 	servoCheckThreadHandle = osThreadNew(servo_check_thread, NULL, &servoCheckThread_attributes);
@@ -631,38 +635,47 @@ void uart_rx_thread(void *argument)
   /* USER CODE BEGIN uart_rx_thread */
 
 	  bool flag = 1;
-	  bool send = 1;
 	  /* Infinite loop */
 	  for(;;)
 	  {
-		  server_receive(rx_data);
 		  if(flag){
+			  server_receive(rx_data);
 			  if(strstr(filter, hello) != NULL){
 				  server_transmit("AT+CIPSEND=2,23\r\n");
 				  server_transmit("Lock says: Listening...");
+				  HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_14);
 				  flag = 0;
 			  	}
 
 		  }else{
-			  if(send){
 
+			  server_receive(rx_data);
+
+			  if(strstr(filter,lock) != NULL && position == 1){
+
+				  for(int i = 0;i<=180;i++)
+					  servo_write(i);
+
+				  osDelay(100);
+				  HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
 				  server_transmit("AT+CIPSEND=2,6\r\n");
 				  server_transmit("Locked");
+				  position = 0;
+
+			  }else if(strstr(filter,unlock) != NULL && position == 0){
+
+				  for(int i=180;i>=0;i--)
+					  servo_write(i);
+
+				  osDelay(100);
 				  HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
-				  send = 0;
-
-			  }
-			  else{
-
 				  server_transmit("AT+CIPSEND=2,8\r\n");
 				  server_transmit("Unlocked");
-				  HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
-				  send = 1;
+				  position = 1;
 			  }
 
 		  }
 
-		  osDelay(100);
 
 	  }
   /* USER CODE END uart_rx_thread */
@@ -678,15 +691,34 @@ void uart_rx_thread(void *argument)
 void servo_check_thread(void *argument)
 {
   /* USER CODE BEGIN servo_check_thread */
-  /* Infinite loop */
+  osDelay(2000);
+	/* Infinite loop */
   for(;;)
   {
-	  /*for(int i=0;i<255;i++){
-		  setPWM(htim3,TIM_CHANNEL_1,255,i);
-		  osDelay(2000);
-	  }*/
-	  HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
-	  osDelay(200);
+
+	  manualLockToggle = HAL_GPIO_ReadPin(GPIOA,GPIO_PIN_0);
+
+	  if(manualLockToggle && position == 1){
+
+	  	for(int i = 0;i<=180;i++)
+			servo_write(i);
+
+	    osDelay(100);
+	  	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
+	  	server_transmit("AT+CIPSEND=2,6\r\n");
+	  	server_transmit("Locked");
+	  	position = 0;
+	  }
+	  else if(manualLockToggle && position == 0){
+	  	for(int i=180;i>=0;i--)
+	  		servo_write(i);
+
+	  	osDelay(100);
+	  	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
+	  	server_transmit("AT+CIPSEND=2,8\r\n");
+	  	server_transmit("Unlocked");
+	  	position = 1;
+	  }
   }
   /* USER CODE END servo_check_thread */
 }
