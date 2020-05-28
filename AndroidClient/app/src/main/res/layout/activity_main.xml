@@ -16,29 +16,42 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
-
+<!--
     <Button
         android:id="@+id/gotoScanner"
-        android:onClick="scannerPopup"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:onClick="scannerPopup"
         android:text="Scan"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.907"
+        app:layout_constraintHorizontal_bias="0.705"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.067" />
+-->
+    <Button
+        android:id="@+id/generateQR"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:onClick="generateQRCode"
+        android:text="QR"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.978"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintVertical_bias="0.067" />
 
     <Button
-        android:id="@+id/generateQR"
+        android:id="@+id/dropUsers"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="QR"
-        android:onClick="generateQRCode"
+        android:text="DROP ALL"
+        android:onClick="deleteAllUsers"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.6"
+        app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintVertical_bias="0.067" />
