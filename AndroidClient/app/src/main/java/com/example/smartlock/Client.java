@@ -41,7 +41,7 @@ public class Client implements Runnable {
             //ip = InetAddress.getByName(address);
             socket.setBroadcast(true);
             socket.setReuseAddress(true);
-            String connection = "Master here!";
+            String connection = "Hello, client here!";
             send(connection);
 
         } catch (SocketException e) {
