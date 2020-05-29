@@ -651,21 +651,15 @@ void uart_rx_thread(void *argument)
 
 		if(strstr(filter,lock) != NULL && position == 1){
 
-			recv = 0;
 			for(int i = 0;i<=180;i++)
 				servo_write(i);
-
-			HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
 
 
 			HAL_UART_Transmit(&huart2,(uint8_t*)("AT+CIPSEND=2,6\r\n"),18,HAL_MAX_DELAY);
 			osDelay(100);
 			HAL_UART_Transmit(&huart2,(uint8_t*)("Locked"),6,HAL_MAX_DELAY);
-			//server_transmit("AT+CIPSEND=2,6\r\n");
-			//server_transmit("Locked");
+			osDelay(100);
 			position = 0;
-			recv = 1;
-
 
 		}else if(strstr(filter,unlock) != NULL && position == 0){
 
@@ -673,18 +667,12 @@ void uart_rx_thread(void *argument)
 			for(int i=180;i>=0;i--)
 				servo_write(i);
 
-			HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
-
-
 			HAL_UART_Transmit(&huart2,(uint8_t*)("AT+CIPSEND=2,8\r\n"),18,HAL_MAX_DELAY);
 			osDelay(100);
 			HAL_UART_Transmit(&huart2,(uint8_t*)("Unlocked"),8,HAL_MAX_DELAY);
-			//server_transmit("AT+CIPSEND=2,8\r\n");
-			//server_transmit("Unlocked");
+			osDelay(100);
+
 			position = 1;
-			recv = 1;
-
-
 		}
 
 		osDelay(200);
@@ -708,9 +696,6 @@ void servo_check_thread(void *argument)
 	/* Infinite loop */
   for(;;)
   {
-	  HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
-	  osDelay(750);
-	  /*
 	  manualLockToggle = HAL_GPIO_ReadPin(GPIOA,GPIO_PIN_0);
 
 	  if(manualLockToggle && position == 1){
@@ -718,22 +703,28 @@ void servo_check_thread(void *argument)
 	  	for(int i = 0;i<=180;i++)
 			servo_write(i);
 
-	    osDelay(100);
-	  	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
-	  	server_transmit("AT+CIPSEND=2,6\r\n");
-	  	server_transmit("Locked");
+
+	  	HAL_UART_Transmit(&huart2,(uint8_t*)("AT+CIPSEND=2,6\r\n"),18,HAL_MAX_DELAY);
+	  	osDelay(100);
+	  	HAL_UART_Transmit(&huart2,(uint8_t*)("Locked"),6,HAL_MAX_DELAY);
+	  	osDelay(100);
+
 	  	position = 0;
 	  }
 	  else if(manualLockToggle && position == 0){
-	  	for(int i=180;i>=0;i--)
+
+		  for(int i=180;i>=0;i--)
 	  		servo_write(i);
 
+	  	HAL_UART_Transmit(&huart2,(uint8_t*)("AT+CIPSEND=2,8\r\n"),18,HAL_MAX_DELAY);
 	  	osDelay(100);
-	  	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
-	  	server_transmit("AT+CIPSEND=2,8\r\n");
-	  	server_transmit("Unlocked");
+	  	HAL_UART_Transmit(&huart2,(uint8_t*)("Unlocked"),8,HAL_MAX_DELAY);
+	  	osDelay(100);
+
 	  	position = 1;
-	  }*/
+	  }
+
+	  osDelay(300);
   }
   /* USER CODE END servo_check_thread */
 }
