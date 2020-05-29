@@ -1,5 +1,6 @@
 package com.example.smartlock;
 
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.constraintlayout.widget.ConstraintLayout;
 
@@ -23,6 +24,9 @@ import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.zxing.integration.android.IntentIntegrator;
+import com.google.zxing.integration.android.IntentResult;
+
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.DatagramPacket;
@@ -38,12 +42,12 @@ public class MainActivity extends AppCompatActivity {
     static final String TAG = "IVAN";
     ConstraintLayout layout;
     ImageView lock_image;
-    //Button openScanner;
-    Button generate_qr, dropBtn;
+    Button openScanner;
+    //Button generate_qr, dropBtn;
     boolean locked = false;
 
-    String HOST_IP = "192.168.43.223";
-    int HOST_PORT = 3000;
+    String HOST_IP ;
+    int HOST_PORT ;
 
     private Client client;
     Thread listen, run, connect;
@@ -56,59 +60,83 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         lock_image = (ImageView) findViewById(R.id.lock_img);
-        //openScanner = (Button) findViewById(R.id.gotoScanner);
-        generate_qr = (Button) findViewById(R.id.generateQR);
-        dropBtn = (Button) findViewById(R.id.dropUsers);
+        openScanner = (Button) findViewById(R.id.gotoScanner);
+        //generate_qr = (Button) findViewById(R.id.generateQR);
+        //dropBtn = (Button) findViewById(R.id.dropUsers);
 
         mContext = MainActivity.this;
+        final Activity activity = this;
 
-        Thread t = null;
-        try {
-            t = new Thread(client = new Client(HOST_IP, HOST_PORT,mContext));
-        } catch (UnknownHostException e) {
-            e.printStackTrace();
-        }
-        t.start();
-
-        lock_image.setOnClickListener(new View.OnClickListener() {
+        openScanner.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if(locked == false){
-                    String message = "LOCK!";
-                    send(message);
-                    toggleLockState(locked);
-                    locked = true;
-                }else if(locked == true){
-                    String message = "UNLOCK!";
-                    send(message);
-                    toggleLockState(locked);
-                    locked = false;
+
+                IntentIntegrator integrator = new IntentIntegrator(activity);
+                integrator.setDesiredBarcodeFormats(IntentIntegrator.QR_CODE_TYPES);
+                integrator.setPrompt("Scan");
+                integrator.setCameraId(0);
+                integrator.setBeepEnabled(false);
+                integrator.setBarcodeImageEnabled(false);
+                integrator.initiateScan();
+            }
+        });
+
+
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+
+        IntentResult result = IntentIntegrator.parseActivityResult(requestCode,resultCode,data);
+        if(result != null){
+            if(result.getContents() == null){
+                Toast.makeText(this,"Cancelled/Invalid QR Code", Toast.LENGTH_LONG).show();
+            }
+            else{
+                HOST_IP = result.getContents().split("\\:")[0];
+                HOST_PORT = Integer.parseInt(result.getContents().split("\\:")[1]);
+
+                Thread t = null;
+                try {
+                    t = new Thread(client = new Client(HOST_IP, HOST_PORT,mContext));
+                } catch (UnknownHostException e) {
+                    e.printStackTrace();
                 }
 
-            }
-        });
+                t.start();
 
-        dropBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                String msg = "Drop all!";
-                send(msg);
+                lock_image.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        if(locked == false){
+                            String message = "LOCK!";
+                            send(message);
+                            toggleLockState(locked);
+                            locked = true;
+                        }else if(locked == true){
+                            String message = "UNLOCK!";
+                            send(message);
+                            toggleLockState(locked);
+                            locked = false;
+                        }
+
+                    }
+                });
+
             }
-        });
+        }
+
+        super.onActivityResult(requestCode, resultCode, data);
     }
 
     public void send(String message) {
         client.send(message);
     }
 
-    public void generateQRCode(View view){
-        Intent intent = new Intent(MainActivity.this, QRCodeGenerateActivity.class);
-        startActivity(intent);
-    }
-
     public void toastMsg(String msg){
         Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
     }
+
     private void changeBackground(View view, boolean state){
 
         int colorLocked = 0xFF90FF93;
