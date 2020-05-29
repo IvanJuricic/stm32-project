@@ -19,6 +19,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
@@ -42,7 +43,7 @@ public class MainActivity extends AppCompatActivity {
     static final String TAG = "IVAN";
     ConstraintLayout layout;
     ImageView lock_image;
-    Button openScanner;
+    ImageButton openScanner;
     //Button generate_qr, dropBtn;
     boolean locked = false;
 
@@ -60,7 +61,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         lock_image = (ImageView) findViewById(R.id.lock_img);
-        openScanner = (Button) findViewById(R.id.gotoScanner);
+        openScanner = (ImageButton) findViewById(R.id.gotoScanner);
         //generate_qr = (Button) findViewById(R.id.generateQR);
         //dropBtn = (Button) findViewById(R.id.dropUsers);
 
@@ -80,6 +81,8 @@ public class MainActivity extends AppCompatActivity {
                 integrator.initiateScan();
             }
         });
+
+
 
 
     }
