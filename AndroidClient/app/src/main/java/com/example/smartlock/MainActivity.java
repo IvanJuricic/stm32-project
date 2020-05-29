@@ -18,6 +18,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
@@ -39,7 +40,8 @@ public class MainActivity extends AppCompatActivity {
     ConstraintLayout layout;
     ImageView lock_image;
     //Button openScanner;
-    Button generate_qr, dropBtn;
+    ImageButton generate_qr;
+    Button dropBtn;
     boolean locked = false;
 
     String HOST_IP = "192.168.43.223";
@@ -57,7 +59,7 @@ public class MainActivity extends AppCompatActivity {
 
         lock_image = (ImageView) findViewById(R.id.lock_img);
         //openScanner = (Button) findViewById(R.id.gotoScanner);
-        generate_qr = (Button) findViewById(R.id.generateQR);
+        generate_qr = (ImageButton) findViewById(R.id.generateQR);
         dropBtn = (Button) findViewById(R.id.dropUsers);
 
         mContext = MainActivity.this;
