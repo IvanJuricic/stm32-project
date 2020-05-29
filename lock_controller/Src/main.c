@@ -90,7 +90,7 @@ void servo_check_thread(void *argument);
 /* USER CODE BEGIN PFP */
 
 void filter_message(char *cmd);
-void server_receive(char *cmd);
+void server_receive();
 void server_transmit(char *cmd);
 
 /* USER CODE END PFP */
@@ -111,6 +111,8 @@ char *unlock = "Otkljucano";
 
 bool connected = 0;
 bool position = 0;
+bool online = 0;
+bool recv = 1;
 
 GPIO_PinState manualLockToggle;
 
@@ -511,13 +513,15 @@ void server_transmit(char *cmd){
 	filter_message(rx_data);
 }
 
-void server_receive(char *cmd){
+void server_receive(){
 
 	HAL_UART_Receive_DMA(&huart2,(uint8_t*)rx_data,256);
 
-	HAL_Delay(2000);
+	HAL_Delay(1500);
 
 	filter_message(rx_data);
+
+	memset(&rx_data,'\0',256);
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
@@ -610,7 +614,14 @@ void StartInitTask(void *argument)
 	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
 
 	server_transmit("Your lock, reporting for duty!");
-	HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
+
+	//server_receive();
+	if(strstr(filter, hello) != NULL && online == 0){
+			server_transmit("AT+CIPSEND=2,23\r\n");
+			server_transmit("Lock says: Listening...");
+			HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
+			online = 1;
+	}
 
 	/* creation of uartRxThread */
 	uartRxThreadHandle = osThreadNew(uart_rx_thread, NULL, &uartRxThread_attributes);
@@ -633,51 +644,53 @@ void StartInitTask(void *argument)
 void uart_rx_thread(void *argument)
 {
   /* USER CODE BEGIN uart_rx_thread */
-
-	  bool flag = 1;
 	  /* Infinite loop */
 	  for(;;)
 	  {
-		  if(flag){
-			  server_receive(rx_data);
-			  if(strstr(filter, hello) != NULL){
-				  server_transmit("AT+CIPSEND=2,23\r\n");
-				  server_transmit("Lock says: Listening...");
-				  HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_14);
-				  flag = 0;
-			  	}
+		server_receive();
 
-		  }else{
+		if(strstr(filter,lock) != NULL && position == 1){
 
-			  server_receive(rx_data);
+			recv = 0;
+			for(int i = 0;i<=180;i++)
+				servo_write(i);
 
-			  if(strstr(filter,lock) != NULL && position == 1){
-
-				  for(int i = 0;i<=180;i++)
-					  servo_write(i);
-
-				  osDelay(100);
-				  HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
-				  server_transmit("AT+CIPSEND=2,6\r\n");
-				  server_transmit("Locked");
-				  position = 0;
-
-			  }else if(strstr(filter,unlock) != NULL && position == 0){
-
-				  for(int i=180;i>=0;i--)
-					  servo_write(i);
-
-				  osDelay(100);
-				  HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
-				  server_transmit("AT+CIPSEND=2,8\r\n");
-				  server_transmit("Unlocked");
-				  position = 1;
-			  }
-
-		  }
+			HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
 
 
-	  }
+			HAL_UART_Transmit(&huart2,(uint8_t*)("AT+CIPSEND=2,6\r\n"),18,HAL_MAX_DELAY);
+			osDelay(100);
+			HAL_UART_Transmit(&huart2,(uint8_t*)("Locked"),6,HAL_MAX_DELAY);
+			//server_transmit("AT+CIPSEND=2,6\r\n");
+			//server_transmit("Locked");
+			position = 0;
+			recv = 1;
+
+
+		}else if(strstr(filter,unlock) != NULL && position == 0){
+
+			recv = 0;
+			for(int i=180;i>=0;i--)
+				servo_write(i);
+
+			HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_15);
+
+
+			HAL_UART_Transmit(&huart2,(uint8_t*)("AT+CIPSEND=2,8\r\n"),18,HAL_MAX_DELAY);
+			osDelay(100);
+			HAL_UART_Transmit(&huart2,(uint8_t*)("Unlocked"),8,HAL_MAX_DELAY);
+			//server_transmit("AT+CIPSEND=2,8\r\n");
+			//server_transmit("Unlocked");
+			position = 1;
+			recv = 1;
+
+
+		}
+
+		osDelay(200);
+	}
+
+
   /* USER CODE END uart_rx_thread */
 }
 
@@ -691,11 +704,13 @@ void uart_rx_thread(void *argument)
 void servo_check_thread(void *argument)
 {
   /* USER CODE BEGIN servo_check_thread */
-  osDelay(2000);
+  //osDelay(2000);
 	/* Infinite loop */
   for(;;)
   {
-
+	  HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_13);
+	  osDelay(750);
+	  /*
 	  manualLockToggle = HAL_GPIO_ReadPin(GPIOA,GPIO_PIN_0);
 
 	  if(manualLockToggle && position == 1){
@@ -718,7 +733,7 @@ void servo_check_thread(void *argument)
 	  	server_transmit("AT+CIPSEND=2,8\r\n");
 	  	server_transmit("Unlocked");
 	  	position = 1;
-	  }
+	  }*/
   }
   /* USER CODE END servo_check_thread */
 }
