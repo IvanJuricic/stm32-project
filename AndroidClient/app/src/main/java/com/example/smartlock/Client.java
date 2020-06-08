@@ -125,6 +125,15 @@ public class Client implements Runnable {
                                 context.toggleLockState(currState);
                             }
                         });
+                    } else if(message.contains("Disconnect!")){
+                        context.runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                context.toastMsg("Your lock privileges are terminated!");
+                                context.lock_image.setOnClickListener(null);
+                                context.lock_image.setClickable(false);
+                            }
+                        });
                     }
                 }
             }
