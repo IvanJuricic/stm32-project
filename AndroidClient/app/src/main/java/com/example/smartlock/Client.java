@@ -23,7 +23,7 @@ public class Client implements Runnable {
     private String  ip;
     private Thread send, receive, listen;
     private int port;
-    boolean currState;
+    boolean currState,connected=true;
 
     protected MainActivity context;
 
@@ -107,7 +107,7 @@ public class Client implements Runnable {
         listen = new Thread("Listen") {
             @Override
             public void run() {
-                while (true) {
+                while (connected) {
                     String message = receive();
                     if (message.contains("Zakljucano")) {
                         context.runOnUiThread(new Runnable() {
@@ -132,6 +132,8 @@ public class Client implements Runnable {
                                 context.toastMsg("Your lock privileges are terminated!");
                                 context.lock_image.setOnClickListener(null);
                                 context.lock_image.setClickable(false);
+                                listen.interrupt();
+                                connected = false;
                             }
                         });
                     }
